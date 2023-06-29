@@ -6,7 +6,7 @@ using System.Diagnostics;
 
 using Debug = UnityEngine.Debug;
 
-namespace Apps
+namespace AppManager
 {
     public class App
     {
