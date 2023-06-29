@@ -34,7 +34,6 @@ namespace AppManager
         
         // Variables for BCI connectivity
         public bool inputFlag;
-        private InputType inputType;
 
         private UdpClient udpClient;
         private IPEndPoint remoteEndPoint;
@@ -184,7 +183,6 @@ namespace AppManager
 
 
             inputFlag = true;
-            inputType = InputType.Platform;
 
             remoteEndPoint = new IPEndPoint(IPAddress.Any, 1000);
             udpClient = new UdpClient(remoteEndPoint);
