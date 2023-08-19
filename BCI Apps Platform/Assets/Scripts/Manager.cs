@@ -27,6 +27,7 @@ namespace AppManager
         string userPath;                    // Path to the user's Documents folder
         List<App> apps = new List<App>();   // List for storing all apps 
         // TODO rename app list to smtg more appropriate
+        private Dictionary<string, System.Diagnostics.Process> runningProcesses = new Dictionary<string, System.Diagnostics.Process>();   // Dictionary for storing running app processes
 
         public GameObject container;        // Container in which the app objects are generated and stored
         public GameObject prefab;           // Prefab used for instantiating an app
@@ -59,25 +60,150 @@ namespace AppManager
             return path;
         }
 
+        /* Function for resizing applications inside the app container
+         * The app in the center of the screen gets bigger 
+         * The other apps get smaller as they get closer to the screen edges
+         */
+        void AdjustScaleOfApps()
+        {
+            float screenCenterX = 0f; // This is the world X coordinate of the screen's center
+            float maxScale = 1.0f;  // Center app remains at its original size
+            float minScale = 0.7f;  // Apps away from center become smaller
+            float maxDistance = 5f;  // The distance over which the scaling effect takes place
+
+            foreach (Transform child in container.transform)
+            {
+                // Determine the distance from the center of the screen
+                float distanceFromCenter = Mathf.Abs(child.position.x - screenCenterX);
+
+                // Calculate a scale factor based on the distance from the center
+                float scaleValue = Mathf.Lerp(minScale, maxScale, 1f - (distanceFromCenter / maxDistance));
+
+                // Apply the scale value
+                child.localScale = new Vector3(scaleValue, scaleValue, scaleValue);
+            }
+        }
         /* Function for moving the container object
            The container is moved each time the user selects another app
         */
         public void moveSelection(Direction direction)
         {
+            float moveDistance = 2.5f;
+
             if (direction == Direction.RIGHT)
             {
-                container.transform.position = new Vector3(container.transform.position.x - 3, 0, 0);
+                container.transform.position = new Vector3(container.transform.position.x - moveDistance, 0, 0);
                 selectedApp++; Debug.Log("Current selected app is: " + selectedApp);
             }
             if (direction == Direction.LEFT)
             {
-                container.transform.position = new Vector3(container.transform.position.x + 3, 0, 0);
+                container.transform.position = new Vector3(container.transform.position.x + moveDistance, 0, 0);
                 selectedApp--; Debug.Log("Current selected app is: " + selectedApp);
             }
+            AdjustScaleOfApps();
         }
+
+
+        void runBoardSelected()
+        {
+            string batFilePath = System.IO.Path.Combine(Application.dataPath, "Boards", "runIntendix.bat");
+            string boardPath = apps[selectedApp].boardPath;
+
+            System.Diagnostics.ProcessStartInfo startInfo = new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = batFilePath,
+                Arguments = $"\"{boardPath}\"",
+                UseShellExecute = false,
+                RedirectStandardError = true,
+                RedirectStandardOutput = true
+            };
+
+            System.Diagnostics.Process process = new System.Diagnostics.Process { StartInfo = startInfo };
+            process.Start();
+
+            string output = process.StandardOutput.ReadToEnd();
+            string errorOutput = process.StandardError.ReadToEnd();
+            int exitCode = process.ExitCode;
+
+            //process.WaitForExit();
+
+            UnityEngine.Debug.Log("Executing BATCH COMMAND: " + batFilePath + " with argument: " + boardPath);
+            UnityEngine.Debug.Log("Output: " + output);
+            UnityEngine.Debug.Log("Error Output: " + errorOutput);
+        }
+        void runBoardDefault()
+        {
+            string batFilePath = System.IO.Path.Combine(Application.dataPath, "Boards", "runIntendix.bat");
+            string boardPath = System.IO.Path.Combine(Application.dataPath, "Boards", "PlatformBoard.ibc");
+
+            System.Diagnostics.ProcessStartInfo startInfo = new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = batFilePath,
+                Arguments = $"\"{boardPath}\"",
+                UseShellExecute = false,
+                RedirectStandardError = true,
+                RedirectStandardOutput = true
+            };
+
+            System.Diagnostics.Process process = new System.Diagnostics.Process { StartInfo = startInfo };
+            process.Start();
+
+            string output = process.StandardOutput.ReadToEnd();
+            string errorOutput = process.StandardError.ReadToEnd();
+            int exitCode = process.ExitCode;
+
+            //process.WaitForExit();
+
+            UnityEngine.Debug.Log("Executing BATCH COMMAND: " + batFilePath + " with argument: " + boardPath);
+            UnityEngine.Debug.Log("Output: " + output);
+            UnityEngine.Debug.Log("Error Output: " + errorOutput);
+        }
+
+
         public void runSelectedApp()
         {
-            apps[selectedApp].run();
+            System.Diagnostics.Process process = apps[selectedApp].run();
+            runningProcesses[apps[selectedApp].name] = process;
+            // runBoardSelected();
+        }
+        public void killSelectedApp()
+        {
+            if (runningProcesses.ContainsKey(apps[selectedApp].name))
+            {
+                runningProcesses[apps[selectedApp].name].Kill();
+                runningProcesses.Remove(apps[selectedApp].name);
+            }
+        }
+
+
+        // Method to relay data to application listeners on port 1000
+        private void UDPRelay(byte[] rawData)
+        {
+            UdpClient relayClient = null; // Declare outside to ensure we can access it in the finally block.
+
+            try
+            {
+                relayClient = new UdpClient();
+                IPEndPoint targetEndPoint = new IPEndPoint(IPAddress.Parse("127.0.0.1"), 1000);
+
+                Debug.Log($"Relaying data: {rawData} to {targetEndPoint.Address}:{targetEndPoint.Port}");
+                relayClient.Send(rawData, rawData.Length, targetEndPoint);
+            }
+            catch (SocketException socketEx)
+            {
+                // Handle specific socket exceptions here, like issues with binding, addressing, etc.
+                Debug.LogError($"Socket Exception in UDPRelay: {socketEx.Message}");
+            }
+            catch (Exception e)
+            {
+                // General exception handler to catch any unexpected errors.
+                Debug.LogError($"Exception in UDPRelay: {e.Message}");
+            }
+            finally
+            {
+                // Ensure resources are properly cleaned up to prevent potential resource leaks.
+                relayClient?.Close();
+            }
         }
 
 
@@ -91,7 +217,9 @@ namespace AppManager
                     var receivedResult = await udpClient.ReceiveAsync();
 
                     string message = Encoding.UTF8.GetString(receivedResult.Buffer);
-                    Debug.Log($"Received: {message}");
+                    Debug.Log($"Received: {message}");  // Debug the received data
+                    Debug.Log($"Received data of length: {receivedResult.Buffer.Length} bytes"); // Debug the length of the received data
+                    UDPRelay(receivedResult.Buffer); // Relay the raw data
 
                     foreach (var navCmd in navigationCommands)
                     {
@@ -117,11 +245,18 @@ namespace AppManager
                                         runSelectedApp();
                                     }
                                     break;
+                                case "ALTF4":
+                                    {
+                                        Debug.Log($"The given command is: {navCmd}");
+                                        killSelectedApp();
+                                    }
+                                    break;
                                 default:
                                     break;
                             }
                         }
                     }
+
                 }
                 catch (Exception e)
                 {
@@ -140,15 +275,17 @@ namespace AppManager
 
             string app;
             string icon;
+            string board;
             foreach (string folder in folders)
             {
                 //Debug.Log(folder);
 
                 app = folder + "\\app.exe";
                 icon = folder + "\\icon.png";
+                board = folder + "\\board.ibc";
 
                 //App newApp = new App(folder, folder + "\\app.exe", folder + "\\icon.png"); 
-                App newApp = new App(folder, app, icon);
+                App newApp = new App(folder, app, icon, board);
                 newApp.debugPrint();
 
                 apps.Add(newApp);
@@ -157,7 +294,8 @@ namespace AppManager
 
             Debug.Log("MANAGER DEBUG: THERE IS A TOTAL OF " + appCounter + " APPS PRESENT");
 
-            int xpos = 0;
+            float xpos = 0f;
+            float spacing = 2.5f;
             foreach (App i in apps)
             {
                 var newObj = GameObject.Instantiate(prefab, new Vector3(xpos, 0, 0), Quaternion.identity);
@@ -177,18 +315,21 @@ namespace AppManager
 
                 newObj.transform.parent = container.transform;
 
-                xpos += 3;
+                xpos += spacing;
             }
 
+            AdjustScaleOfApps();
+            //runBoardDefault();
 
 
             inputFlag = true;
 
-            remoteEndPoint = new IPEndPoint(IPAddress.Any, 1000);
+            remoteEndPoint = new IPEndPoint(IPAddress.Any, 1001);
             udpClient = new UdpClient(remoteEndPoint);
             udpClient.Client.ReceiveBufferSize = bufferSize;
             udpClient.EnableBroadcast = true;
 
+            // Start the UDPListener thread
             receiveThread = new Thread(new ThreadStart(UDPListener));
             receiveThread.IsBackground = true;
             receiveThread.Start();

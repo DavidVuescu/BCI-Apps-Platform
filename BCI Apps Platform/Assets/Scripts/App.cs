@@ -14,25 +14,33 @@ namespace AppManager
 
         public string exePath;
         public string iconPath;
+        public string boardPath;
 
 
-        public App(string name, string ExecutablePath, string IconPath)
+        public App(string name, string ExecutablePath, string IconPath, string BoardPath)
         {
             this.name = name;
 
             exePath = ExecutablePath;
             iconPath = IconPath;
+            boardPath = BoardPath;
         }
 
 
-        public void run()
+        public Process run()
         {
             Debug.Log("APPLICATION DEBUG: Trying to run app on path: " + exePath);
-            Process.Start(exePath);
+            ProcessStartInfo startInfo = new ProcessStartInfo
+            {
+                FileName = exePath,
+                Arguments = "-screen-fullscreen 0 -screen-height 900 -screen-width 1600" // This is just a common example. You should replace it with the actual argument if different.
+            };
+
+            return Process.Start(startInfo);
         }
         public void debugPrint()
         {
-            Debug.Log("Name: " + name + "   Exe Path: " + exePath + "   Icon Path: " + iconPath);
+            Debug.Log("Name: " + name + "   Exe Path: " + exePath + "   Icon Path: " + iconPath + "   Board Path: " + boardPath);
         }
     }
 }
