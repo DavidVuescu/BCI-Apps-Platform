@@ -10,6 +10,7 @@ using System.Text.RegularExpressions;
 using System.Net;
 using System.Net.Sockets;
 using System.Threading;
+using System.Threading.Tasks;
 
 namespace AppManager
 {
@@ -27,7 +28,11 @@ namespace AppManager
         string userPath;                    // Path to the user's Documents folder
         List<App> apps = new List<App>();   // List for storing all apps 
         // TODO rename app list to smtg more appropriate
+
+        // PROCESSES
         private Dictionary<string, System.Diagnostics.Process> runningProcesses = new Dictionary<string, System.Diagnostics.Process>();   // Dictionary for storing running app processes
+        private System.Diagnostics.Process currentBoardProcess = null;  // Process for storing current board that is executed
+
 
         public GameObject container;        // Container in which the app objects are generated and stored
         public GameObject prefab;           // Prefab used for instantiating an app
@@ -104,59 +109,60 @@ namespace AppManager
         }
 
 
+
+        private void runBoardProcess(string boardPath)
+        {
+            string intendixPath = @"C:\Program Files\gtec\Unicorn Suite\Hybrid Black\Unicorn Speller\intendix.exe";
+            string arguments = "-device Unicorn -deviceSerial UN-2019.06.36 -ch 8 -board \"" + boardPath + "\"";
+            currentBoardProcess = new System.Diagnostics.Process();
+            currentBoardProcess.StartInfo.FileName = intendixPath;
+            currentBoardProcess.StartInfo.Arguments = arguments;
+
+            currentBoardProcess.StartInfo.RedirectStandardOutput = true;
+            currentBoardProcess.StartInfo.RedirectStandardError = true;
+            currentBoardProcess.StartInfo.UseShellExecute = false;
+
+            currentBoardProcess.Start();
+
+
+            string output = currentBoardProcess.StandardOutput.ReadToEnd();
+            string errors = currentBoardProcess.StandardError.ReadToEnd();
+
+            Debug.Log($"Running: {intendixPath} {arguments}");
+            Debug.Log($"Output: {output}");
+            Debug.LogError($"Errors: {errors}");
+        }
+        void closeCurrentBoard()
+        {
+            if (currentBoardProcess != null && !currentBoardProcess.HasExited)
+            {
+                currentBoardProcess.Kill();
+                currentBoardProcess.WaitForExit(); // This will make sure the process is actually terminated
+                currentBoardProcess = null;
+
+                UnityEngine.Debug.LogWarning("BOARD KILLER: Board killed.");
+            }
+            else
+            {
+                UnityEngine.Debug.LogWarning("BOARD KILLER: No board process is running or it has already exited.");
+            }
+
+        }
+
+
         void runBoardSelected()
         {
-            string batFilePath = System.IO.Path.Combine(Application.dataPath, "Boards", "runIntendix.bat");
+            closeCurrentBoard(); // Close the currently running board, if any
             string boardPath = apps[selectedApp].boardPath;
 
-            System.Diagnostics.ProcessStartInfo startInfo = new System.Diagnostics.ProcessStartInfo
-            {
-                FileName = batFilePath,
-                Arguments = $"\"{boardPath}\"",
-                UseShellExecute = false,
-                RedirectStandardError = true,
-                RedirectStandardOutput = true
-            };
-
-            System.Diagnostics.Process process = new System.Diagnostics.Process { StartInfo = startInfo };
-            process.Start();
-
-            string output = process.StandardOutput.ReadToEnd();
-            string errorOutput = process.StandardError.ReadToEnd();
-            int exitCode = process.ExitCode;
-
-            //process.WaitForExit();
-
-            UnityEngine.Debug.Log("Executing BATCH COMMAND: " + batFilePath + " with argument: " + boardPath);
-            UnityEngine.Debug.Log("Output: " + output);
-            UnityEngine.Debug.Log("Error Output: " + errorOutput);
+            Task.Run(() => runBoardProcess(boardPath));
         }
         void runBoardDefault()
         {
-            string batFilePath = System.IO.Path.Combine(Application.dataPath, "Boards", "runIntendix.bat");
+            closeCurrentBoard(); // Close the currently running board, if any
             string boardPath = System.IO.Path.Combine(Application.dataPath, "Boards", "PlatformBoard.ibc");
 
-            System.Diagnostics.ProcessStartInfo startInfo = new System.Diagnostics.ProcessStartInfo
-            {
-                FileName = batFilePath,
-                Arguments = $"\"{boardPath}\"",
-                UseShellExecute = false,
-                RedirectStandardError = true,
-                RedirectStandardOutput = true
-            };
-
-            System.Diagnostics.Process process = new System.Diagnostics.Process { StartInfo = startInfo };
-            process.Start();
-
-            string output = process.StandardOutput.ReadToEnd();
-            string errorOutput = process.StandardError.ReadToEnd();
-            int exitCode = process.ExitCode;
-
-            //process.WaitForExit();
-
-            UnityEngine.Debug.Log("Executing BATCH COMMAND: " + batFilePath + " with argument: " + boardPath);
-            UnityEngine.Debug.Log("Output: " + output);
-            UnityEngine.Debug.Log("Error Output: " + errorOutput);
+            Task.Run(() => runBoardProcess(boardPath));
         }
 
 
@@ -164,7 +170,8 @@ namespace AppManager
         {
             System.Diagnostics.Process process = apps[selectedApp].run();
             runningProcesses[apps[selectedApp].name] = process;
-            // runBoardSelected();
+
+            runBoardSelected();  // Open the selected board for the app
         }
         public void killSelectedApp()
         {
@@ -173,6 +180,8 @@ namespace AppManager
                 runningProcesses[apps[selectedApp].name].Kill();
                 runningProcesses.Remove(apps[selectedApp].name);
             }
+
+            runBoardDefault();  // Open the default board after closing an app
         }
 
 
@@ -319,7 +328,7 @@ namespace AppManager
             }
 
             AdjustScaleOfApps();
-            //runBoardDefault();
+            runBoardDefault();
 
 
             inputFlag = true;

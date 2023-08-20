@@ -33,7 +33,7 @@ namespace AppManager
             ProcessStartInfo startInfo = new ProcessStartInfo
             {
                 FileName = exePath,
-                Arguments = "-screen-fullscreen 0 -screen-height 900 -screen-width 1600" // This is just a common example. You should replace it with the actual argument if different.
+                Arguments = "-screen-fullscreen 0 -screen-height 900 -screen-width 1600 -monitor 3"
             };
 
             return Process.Start(startInfo);
